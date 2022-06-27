@@ -171,7 +171,7 @@ for i = 1:length(sOpt_original)
     total_velocity_original(i) = norm(sOpt_original(4:6,i));
 end
 hold on
-plot(intervals,total_velocity,'DisplayName','optimal');
+plot(intervals,total_velocity,'--','DisplayName','optimal');
 plot(intervals_original,total_velocity_original,'DisplayName','original');
 hold off
 xlabel('t [s]'); ylabel('Vel [m/s]');
@@ -181,9 +181,12 @@ title(sprintf('Total Velocity (direction not included)'));
 
 subplot(3,1,2)
 hold on
-plot(intervals,sOpt(4,:),'DisplayName','X/s');
-plot(intervals,sOpt(5,:),'DisplayName','Y/s');
-plot(intervals,sOpt(6,:),'DisplayName','Z/s');
+plot(intervals,sOpt(4,:),'--','DisplayName','X/s');
+plot(intervals,sOpt(5,:),'--','DisplayName','Y/s');
+plot(intervals,sOpt(6,:),'--','DisplayName','Z/s');
+plot(intervals_original,sOpt_original(4,:),'DisplayName','orig X/s');
+plot(intervals_original,sOpt_original(5,:),'DisplayName','orig Y/s');
+plot(intervals_original,sOpt_original(6,:),'DisplayName','orig Z/s');
 hold off
 xlabel('t [s]'); ylabel('Vel [m/s^2]');
 grid on
@@ -198,7 +201,7 @@ for i = 1:length(sOpt_original)
     total_acc_original(i) = norm(sOpt_original(7:9,i));
 end
 hold on
-plot(intervals,total_acc,'DisplayName','optimal');
+plot(intervals,total_acc,'--','DisplayName','optimal');
 plot(intervals_original,total_acc_original,'DisplayName','original');
 hold off
 xlabel('t [s]'); ylabel('acc [m/s^2]');

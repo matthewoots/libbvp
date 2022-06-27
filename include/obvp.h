@@ -71,6 +71,7 @@ namespace obvp
 
 		matrix::SquareMatrix<double, 3> m(fifth_order);
 
+        // Print out the delta vector
         // printf("delta:\n");
         // for (int i = 0; i < 9; i++)
         // {
@@ -84,7 +85,6 @@ namespace obvp
 		// Make the 3x3 matrix into a 9x9 matrix so that xyz is included
 		for (int i = 0; i < 9; i++)
 		{
-            // printf("(%d,%d)\n", (i+1) % 3, (int)(((i+1) % 3) == 0));
 			int l_m = (i+1) % 3 + 3*(int)(((i+1) % 3) == 0) - 1;
 			int h_m = (int)ceil((double)(i+1) / 3.0) - 1;
 
@@ -99,6 +99,7 @@ namespace obvp
             // printf("m(%d,%d), %lf\n", l_m, h_m, m(l_m,h_m));
 		}
 
+        // Print out the M matrix vector
         // printf("M matrix:\n");
         // for (int i = 0; i < 9; i++)
         // {

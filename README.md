@@ -1,7 +1,7 @@
 # Optimal Boundary Value Problem Library(libbvp)
 
 ## Installation
-`libbvp` optimal boundary value problem library using some PX4 modules.
+`libbvp` optimal boundary value problem library using some PX4 modules. OBVP is referenced from Mark Mueller from https://flyingmachinearena.org/wp-content/uploads/mueTRO15.pdf
 
 ### PX4 Libraries used
 - mathlib : Some useful definitions for math classes
