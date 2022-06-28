@@ -8,26 +8,24 @@ using namespace std::chrono;
 
 double rad_to_deg = 1/3.14159265358979323846264338327 * 180.0;
 double deg_to_rad = 1/180.0 * 3.14159265358979323846264338327;
-matrix::Vector3d zero = matrix::Vector3d{0, 0, 0};
+Eigen::Vector3d zero = Eigen::Vector3d::Zero();
 
 // since it is in ENU frame, hence it is pry not rpy
-matrix::Vector3d velocity_in_global_frame(double r, double p, double y, double vel) 
+Eigen::Vector3d velocity_in_global_frame(double r, double p, double y, double vel) 
 {
     // in the enu frame, y would be the velocity
-    matrix::Vector3d relative_vel = matrix::Vector3d(0, vel, 0);
-    double pitch[9] = {
-            1.0,  0.0,  0.0,
-            0.0,  cos(p),  -sin(p),
-            0.0,  sin(p),  cos(p)
-        };
-    matrix::SquareMatrix<double, 3> P(pitch);
-    double yaw[9] = {
-            cos(y),  -sin(y), 0.0,
-            sin(y),  cos(y), 0.0,
-            0.0,  0.0,  1.0
-        };
-    matrix::SquareMatrix<double, 3> Y(yaw);
-    return (Y.I() * P.I()) * relative_vel; 
+    Eigen::Vector3d relative_vel = Eigen::Vector3d(0, vel, 0);
+
+    Eigen::Matrix3d P;
+    P << 1.0,  0.0,  0.0,
+        0.0,  cos(p),  -sin(p),
+        0.0,  sin(p),  cos(p);
+
+    Eigen::Matrix3d Y;
+    Y << cos(y),  -sin(y), 0.0,
+        sin(y),  cos(y), 0.0,
+        0.0,  0.0,  1.0;
+    return (Y.inverse() * P.inverse()) * relative_vel; 
 }
 
 
@@ -56,22 +54,22 @@ int main(int argc, char **argv)
 
     double distance_to_land_from_dive = (height_of_descend - height_of_land) / sin(descend_pitch_rad);
 
-    matrix::Vector3d dive_position;
-    matrix::Vector3d landing_position = matrix::Vector3d(
+    Eigen::Vector3d dive_position;
+    Eigen::Vector3d landing_position = Eigen::Vector3d(
         WS_LAT_P_LAND, WS_LONG_P_LAND, height_of_land);
-    matrix::Vector3d platform_speed;
+    Eigen::Vector3d platform_speed;
     dive_position(2) = height_of_descend;
 
     waypoint_from_heading_and_distance(
         WS_LAT_P_LAND, WS_LONG_P_LAND, -descend_bearing_rad, 
         (float)distance_to_land_from_dive, &dive_position(0), &dive_position(1));
 
-    matrix::Vector3d velocity_global = 
+    Eigen::Vector3d velocity_global = 
         velocity_in_global_frame(0.0, descend_pitch_rad, descend_bearing_rad, airspeed);
 
-    matrix::Vector3d dive_position_local;
-    matrix::Vector3d landing_position_local = 
-        matrix::Vector3d(0, 0, landing_position(2));
+    Eigen::Vector3d dive_position_local;
+    Eigen::Vector3d landing_position_local = 
+        Eigen::Vector3d(0, 0, landing_position(2));
     if (_global_local_proj_ref.isInitialized()) 
     {
         matrix::Vector2f pos_local = _global_local_proj_ref.project(dive_position(0), dive_position(1));
@@ -88,17 +86,17 @@ int main(int argc, char **argv)
         landing_position_local(0), landing_position_local(1), landing_position_local(2));
     printf("velocity [%lf %lf %lf]\n", velocity_global(0), velocity_global(1), velocity_global(2));
 
-    matrix::Vector3d alpha, beta, gamma;
+    Eigen::Vector3d alpha, beta, gamma;
     double command_time = 0.05;
 
-    matrix::SquareMatrix<double, 3> initial_state_local;
+    Eigen::Matrix3d initial_state_local;
     initial_state_local.setZero();
     
     initial_state_local.col(0) = dive_position_local; // Position
     initial_state_local.col(1) = velocity_global; // Velocity
     initial_state_local.col(2) = zero; // Acceleration
 
-    matrix::SquareMatrix<double, 3> final_state_local;
+    Eigen::Matrix3d final_state_local;
     final_state_local.setZero();
     
     final_state_local.col(0) = landing_position_local; // Position
@@ -135,19 +133,19 @@ int main(int argc, char **argv)
     auto test_time_diff = duration<double>(end - start).count();
     printf("time taken : %lfs\n", test_time_diff);
 
-    waypoints = get_discrete_points(
-        initial_state_local, final_state_local, total_time, command_time, 
-        alpha, beta, gamma);
+    // waypoints = get_discrete_points(
+    //     initial_state_local, final_state_local, total_time, command_time, 
+    //     alpha, beta, gamma);
     
-    printf("discrete waypoints:\n");
-    for (int i = 0; i < (int)waypoints.size(); i++)
-        printf("%lf ", waypoints[i](5));
-    printf("\n");
+    // printf("discrete waypoints:\n");
+    // for (int i = 0; i < (int)waypoints.size(); i++)
+    //     printf("%lf ", waypoints[i](5));
+    // printf("\n");
 
-    printf("alpha coefficient(%lf, %lf, %lf)\n", alpha(0), alpha(1), alpha(2));
-    printf("beta coefficient(%lf, %lf, %lf)\n", beta(0), beta(1), beta(2));
-    printf("gamma coefficient(%lf, %lf, %lf)\n", gamma(0), gamma(1), gamma(2));
-    printf("waypoint_size(%d) iter(%d)\n", (int)waypoints.size(), iter);
+    // printf("alpha coefficient(%lf, %lf, %lf)\n", alpha(0), alpha(1), alpha(2));
+    // printf("beta coefficient(%lf, %lf, %lf)\n", beta(0), beta(1), beta(2));
+    // printf("gamma coefficient(%lf, %lf, %lf)\n", gamma(0), gamma(1), gamma(2));
+    // printf("waypoint_size(%d) iter(%d)\n", (int)waypoints.size(), iter);
 
     return 0;
 }

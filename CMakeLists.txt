@@ -10,15 +10,21 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include
     PX4-Matrix/matrix
     mathlib
+    eigen
 )
 
-add_executable(${PROJECT_NAME}_bvp
-    src/bvp_test.cpp
-    src/geo.cpp
-)
+# add_executable(${PROJECT_NAME}_bvp
+#     src/bvp_test.cpp
+#     src/geo.cpp
+# )
 
-add_executable(${PROJECT_NAME}_precision_landing
-    src/landing_test.cpp
+# add_executable(${PROJECT_NAME}_precision_landing
+#     src/landing_test.cpp
+#     src/geo.cpp
+# )
+
+add_executable(${PROJECT_NAME}_precision_landing_eigen
+    src/landing_eigen_test.cpp
     src/geo.cpp
 )
 

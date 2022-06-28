@@ -1,3 +1,6 @@
 [submodule "PX4-Matrix"]
 	path = PX4-Matrix
 	url = git@github.com:matthewoots/PX4-Matrix.git
+[submodule "eigen"]
+	path = eigen
+	url = git@github.com:PX4/eigen.git
