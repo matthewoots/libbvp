@@ -12,8 +12,13 @@ include_directories(
     mathlib
 )
 
-add_executable(${PROJECT_NAME}_precision_landing
+add_executable(${PROJECT_NAME}_bvp
     src/bvp_test.cpp
+    src/geo.cpp
+)
+
+add_executable(${PROJECT_NAME}_precision_landing
+    src/landing_test.cpp
     src/geo.cpp
 )
 

@@ -58,15 +58,14 @@ using matrix::wrap_2pi;
  * formulas according to: http://mathworld.wolfram.com/AzimuthalEquidistantProjection.html
  */
 
-// void MapProjection::initReference(double lat_0, double lon_0, uint64_t timestamp)
-// {
-// 	_ref_timestamp = timestamp;
-// 	_ref_lat = math::radians(lat_0);
-// 	_ref_lon = math::radians(lon_0);
-// 	_ref_sin_lat = sin(_ref_lat);
-// 	_ref_cos_lat = cos(_ref_lat);
-// 	_ref_init_done = true;
-// }
+void MapProjection::initReference(double lat_0, double lon_0)
+{
+	_ref_lat = math::radians(lat_0);
+	_ref_lon = math::radians(lon_0);
+	_ref_sin_lat = sin(_ref_lat);
+	_ref_cos_lat = cos(_ref_lat);
+	_ref_init_done = true;
+}
 
 void MapProjection::project(double lat, double lon, float &x, float &y) const
 {

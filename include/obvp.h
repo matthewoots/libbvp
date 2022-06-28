@@ -23,12 +23,14 @@
 #include "math.hpp"
 #include "geo.h"
 #include "mathlib.h"
+#include "Array.hpp"
 
 using namespace std;
 using matrix::Vector2d;
 using matrix::Vector2f;
 using matrix::wrap_pi;
 using matrix::wrap_2pi;
+using px4_array_container = px4::Array< matrix::Vector<double, 9>,100>;
 
 namespace obvp
 {
@@ -118,6 +120,79 @@ namespace obvp
         *beta = matrix::Vector3d(abg(3), abg(4), abg(5));
         *gamma = matrix::Vector3d(abg(6), abg(7), abg(8));
 
+	}
+
+    px4_array_container get_discrete_points(matrix::SquareMatrix<double, 3> initial,
+		matrix::SquareMatrix<double, 3> final,
+        double total_time, double command_time, matrix::Vector3d alpha, matrix::Vector3d beta,
+		matrix::Vector3d gamma)
+	{
+        // Update the initial values
+		matrix::Vector3d p0 = matrix::Vector3d(
+			initial(0,0), initial(1,0), initial(2,0));
+		matrix::Vector3d v0 = matrix::Vector3d(
+			initial(0,1), initial(1,1), initial(2,1));
+		matrix::Vector3d a0 = matrix::Vector3d(
+			initial(0,2), initial(1,2), initial(2,2));
+
+		// Update the destination values
+		matrix::Vector3d pf = matrix::Vector3d(
+			final(0,0), final(1,0), final(2,0));
+		matrix::Vector3d vf = matrix::Vector3d(
+			final(0,1), final(1,1), final(2,1));
+		matrix::Vector3d af = matrix::Vector3d(
+			final(0,2), final(1,2), final(2,2));
+
+        int waypoint_size = (int)ceil(total_time / command_time);
+        double corrected_interval = total_time / (double)waypoint_size;
+        px4_array_container desired_states;
+        for (int i = 0; i < waypoint_size; i++)
+        {
+            matrix::Vector3d pos = (
+                alpha/120 * pow((corrected_interval*i),5) + 
+                beta/24 * pow((corrected_interval*i),4) + 
+                gamma/6 * pow((corrected_interval*i),3) + 
+                a0/2 * pow((corrected_interval*i),2) + 
+                v0 * corrected_interval + p0);
+            matrix::Vector3d vel = (alpha/24 * pow((corrected_interval*i),4) + 
+                beta/6 * pow((corrected_interval*i),3) + 
+                gamma/2 * pow((corrected_interval*i),2) + a0 * corrected_interval + v0);
+            matrix::Vector3d acc = (alpha/6 * pow((corrected_interval*i),3) + 
+                beta/2 * pow((corrected_interval*i),2) + gamma * corrected_interval + a0);
+            
+            double data[] = {
+                pos(0), pos(1), pos(2), vel(0), vel(1), vel(2), acc(0), acc(1), acc(2)
+            };
+            matrix::Vector<double, 9> desired_state(data);
+
+            desired_states.push_back(desired_state);
+        }
+        return desired_states;
+	}
+
+    bool check_z_vel(matrix::SquareMatrix<double, 3> initial,
+		matrix::SquareMatrix<double, 3> final,
+        double total_time, double command_time, matrix::Vector3d alpha, matrix::Vector3d beta,
+		matrix::Vector3d gamma)
+	{
+		matrix::Vector3d v0 = matrix::Vector3d(
+			initial(0,1), initial(1,1), initial(2,1));
+		matrix::Vector3d a0 = matrix::Vector3d(
+			initial(0,2), initial(1,2), initial(2,2));
+
+        int waypoint_size = (int)ceil(total_time / command_time);
+        double corrected_interval = total_time / (double)waypoint_size;
+        px4_array_container desired_states;
+        for (int i = 0; i < waypoint_size; i++)
+        {
+            matrix::Vector3d vel = (alpha/24 * pow((corrected_interval*i),4) + 
+                beta/6 * pow((corrected_interval*i),3) + 
+                gamma/2 * pow((corrected_interval*i),2) + a0 * corrected_interval + v0);
+            
+            if (vel(2) > 0.001)
+                return false;
+        }
+        return true;
 	}
 }
 

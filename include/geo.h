@@ -162,7 +162,6 @@ float mavlink_wpm_distance_to_point_local(float x_now, float y_now, float z_now,
 class MapProjection final
 {
 private:
-	uint64_t _ref_timestamp{0};
 	double _ref_lat{0.0};
 	double _ref_lon{0.0};
 	double _ref_sin_lat{0.0};
@@ -177,13 +176,13 @@ public:
 	 */
 	MapProjection() = default;
 
-	// /**
-	//  * @brief Construct and initialize a new Map Projection object
-	//  */
-	// MapProjection(double lat_0, double lon_0)
-	// {
-	// 	initReference(lat_0, lon_0);
-	// }
+	/**
+	 * @brief Construct and initialize a new Map Projection object
+	 */
+	MapProjection(double lat_0, double lon_0)
+	{
+		initReference(lat_0, lon_0);
+	}
 
 	// /**
 	//  * @brief Construct and initialize a new Map Projection object
@@ -201,19 +200,19 @@ public:
 	 * @param lat in degrees (47.1234567°, not 471234567°)
 	 * @param lon in degrees (8.1234567°, not 81234567°)
 	 */
-	// void initReference(double lat_0, double lon_0, uint64_t timestamp);
+	void initReference(double lat_0, double lon_0);
 
-	// /**
-	//  * Initialize the map transformation
-	//  *
-	//  * with reference coordinates on the geographic coordinate system
-	//  * where the azimuthal equidistant plane's origin is located
-	//  * @param lat in degrees (47.1234567°, not 471234567°)
-	//  * @param lon in degrees (8.1234567°, not 81234567°)
-	//  */
+	/**
+	 * Initialize the map transformation
+	 *
+	 * with reference coordinates on the geographic coordinate system
+	 * where the azimuthal equidistant plane's origin is located
+	 * @param lat in degrees (47.1234567°, not 471234567°)
+	 * @param lon in degrees (8.1234567°, not 81234567°)
+	 */
 	// inline void initReference(double lat_0, double lon_0)
 	// {
-	// 	initReference(lat_0, lon_0, hrt_absolute_time());
+	// 	initReference(lat_0, lon_0);
 	// }
 
 	/**
@@ -224,7 +223,7 @@ public:
 	/**
 	 * @return the timestamp of the reference which the map projection was initialized with
 	 */
-	uint64_t getProjectionReferenceTimestamp() const { return _ref_timestamp; };
+	// uint64_t getProjectionReferenceTimestamp() const { return _ref_timestamp; };
 
 	/**
 	 * @return the projection reference latitude in degrees

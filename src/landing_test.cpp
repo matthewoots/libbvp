@@ -1,8 +1,10 @@
 #include <iostream>
 #include <string>
 #include "obvp.h"
+#include <chrono>
 
 using namespace obvp;
+using namespace std::chrono;
 
 double rad_to_deg = 1/3.14159265358979323846264338327 * 180.0;
 double deg_to_rad = 1/180.0 * 3.14159265358979323846264338327;
@@ -28,8 +30,10 @@ matrix::Vector3d velocity_in_global_frame(double r, double p, double y, double v
     return (Y.I() * P.I()) * relative_vel; 
 }
 
+
+
 /**
- * @brief bvp test case
+ * @brief bvp landing case
  */
 
 int main(int argc, char **argv) 
@@ -85,7 +89,8 @@ int main(int argc, char **argv)
     printf("velocity [%lf %lf %lf]\n", velocity_global(0), velocity_global(1), velocity_global(2));
 
     matrix::Vector3d alpha, beta, gamma;
-    double total_time = 5.0;
+    double command_time = 0.05;
+
     matrix::SquareMatrix<double, 3> initial_state_local;
     initial_state_local.setZero();
     
@@ -100,12 +105,44 @@ int main(int argc, char **argv)
     final_state_local.col(1) = zero; // Velocity
     final_state_local.col(2) = zero; // Acceleration
 
-    get_bvp_coefficients(initial_state_local, final_state_local, total_time,
-		&alpha, &beta, &gamma);
+    double total_time = 5.0;
+    double step = 0.1;
+    bool check_passed = false;
+    int iter = 0;
+    px4_array_container waypoints;
+
+    time_point<std::chrono::system_clock> start = system_clock::now();
+    while (!check_passed)
+    {
+        iter += 1;
+        get_bvp_coefficients(initial_state_local, final_state_local, total_time,
+            &alpha, &beta, &gamma);
+
+        check_passed = check_z_vel(
+            initial_state_local, final_state_local, total_time, command_time, 
+            alpha, beta, gamma);
+        
+        if (check_passed)
+        {
+            px4_array_container temp_waypoints = get_discrete_points(
+                initial_state_local, final_state_local, total_time, command_time, 
+                alpha, beta, gamma);
+            for (int i = 0; i < (int)temp_waypoints.size(); i++)
+                printf("%lf\n", temp_waypoints[i](5));
+            check_passed = true;
+            waypoints = temp_waypoints;
+        }
+        else
+            total_time -= step;
+    }
+    time_point<std::chrono::system_clock> end = system_clock::now();
+    auto test_time_diff = duration<double>(end - start).count();
+    printf("time taken : %lfs\n", test_time_diff);
 
     printf("alpha coefficient(%lf, %lf, %lf)\n", alpha(0), alpha(1), alpha(2));
     printf("beta coefficient(%lf, %lf, %lf)\n", beta(0), beta(1), beta(2));
     printf("gamma coefficient(%lf, %lf, %lf)\n", gamma(0), gamma(1), gamma(2));
+    printf("waypoint_size(%d) iter(%d)\n", (int)waypoints.size(), iter);
 
     return 0;
 }
