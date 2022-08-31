@@ -133,9 +133,10 @@ int main(int argc, char **argv)
     auto test_time_diff = duration<double>(end - start).count();
     printf("time taken : %lfs\n", test_time_diff);
 
+    // int waypoint_size = 0;
     // waypoints = get_discrete_points(
     //     initial_state_local, final_state_local, total_time, command_time, 
-    //     alpha, beta, gamma);
+    //     alpha, beta, gamma, waypoint_size);
     
     // printf("discrete waypoints:\n");
     // for (int i = 0; i < (int)waypoints.size(); i++)

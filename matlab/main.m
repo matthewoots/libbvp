@@ -22,14 +22,15 @@ FLT_MAX = exp(37);
 % We are using ENU frame
 % Bearing 0 means facing y direction
 Vconst = 20; % this changes the overshoot of the curve
-total_time = 5; % this changes the overshoot of the curve
+total_time = 8; % this changes the overshoot of the curve
 additional_curve_height = 3; % this changes the overshoot of the curve
 
-ib_deg = -20; fb_deg = -20;
+% ib_deg = 10; 
+fb_deg = 80;
 timeint = 0.1;
 range = 10;
 flightHeight = 20;
-flare_height = 6;
+flare_height = 20;
 descend_angle = 30;
 descend_angle_rad = descend_angle/180 * pi;
 
@@ -39,12 +40,14 @@ buffer_dist = 15;
 
 bnd = 45;
 
-landing_height = 0.3; % elevated
+landing_height = 0.5; % elevated
 % Get [Final] Positions
-fp = [12.5,12.5,landing_height];
+% fp = [12.5,12.5,landing_height];
+fp = [0.0,0.0,landing_height];
 
 % Get [Initial] and [Final] Bearing
-ib = ib_deg/180 * pi; fb = fb_deg/180 * pi;
+% ib = ib_deg/180 * pi; 
+fb = fb_deg/180 * pi;
 
 
 %% Construct landing parameters and intermediate point

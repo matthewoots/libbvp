@@ -1,0 +1,25 @@
+length_cg_to_cwing: 0.055
+length_pivote_to_celevator: 0.0135
+length_cg_to_pivote: 0.0875
+surface_area_elevator: 0.007
+surface_area_wing: 0.05699
+mass: 0.2565
+moments_of_inertia: 0.001231
+
+velocity_constrain: 20.0
+theta_contrain: 1.5707
+phi_contrain: 0.3926
+thetadot_constrain: 1.000
+phidot_constrain: 1.000
+
+# phi_contrain: pi/8
+# Delta wing example for ZoHD dart 250g 
+# surface_area_elevator (mm) = 2 * (25mm * 140mm)
+# surface_area_elevator (m) = 2 * (0.025 * 0.140)
+# surface_area_wing (mm) = 2 * (105mm * 237mm + 0.5 * 60mm * 237mm - 25mm * 140mm)
+# surface_area_wing (m) = 2 * (0.105 * 0.237 + 0.5 * 0.060 * 0.237 - 0.025mm * 0.140)
+# length_cg_to_pivote = 87.5mm = 0.0875m
+# mass = 0.2565 kg
+# MOI = 0.001231
+# length_cg_to_cwing = 55mm = 0.055m
+# length_pivote_to_celevator = 13.5mm = 0.0135m

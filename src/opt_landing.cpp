@@ -1,9 +1,13 @@
 #include <iostream>
 #include <string>
-#include "obvp.h"
 #include <chrono>
+#include <vector>
+
+#include "obvp.h"
+#include "fpgm_collocation.h"
 
 using namespace obvp;
+using namespace fpgm_collocation;
 using namespace std::chrono;
 
 double rad_to_deg = 1/3.14159265358979323846264338327 * 180.0;
@@ -39,17 +43,20 @@ matrix::Vector3d velocity_in_global_frame(double r, double p, double y, double v
 
 
 
-/**
- * @brief bvp landing case
- */
-
 int main(int argc, char **argv) 
 {
     MapProjection _global_local_proj_ref{};
+
+    fpgm_collocation::fpgm_collocation fpgm;
     
+    /**
+     * @brief Parameters setting
+     */
     // ENU frame according to Lat Lon and height
     double WS_LAT_P_LAND = 1.330587;
     double WS_LONG_P_LAND = 103.783740;
+
+    // Setting the reference of the map with the current position
     _global_local_proj_ref.initReference(WS_LAT_P_LAND, WS_LONG_P_LAND);
 
     double airspeed = 20.0; // m/s
@@ -62,6 +69,14 @@ int main(int argc, char **argv)
     double height_of_descend = 20.0; // m
     double height_of_land = 0.5; // If there is a structure for the aircraft to land on
 
+    // according to Robust Post-Stall Perching with a Fixed-Wing UAV by Joseph Moore page 28
+    // elevator moving upwards is considered negative
+    double max_elevator = -30.0;
+    double max_elevator_rad = descend_bearing_deg * max_elevator;
+    double current_elevator_rad = 0.0;
+    double current_thetadot = 0.0;
+
+    // Calculate the descend distance
     double distance_to_land_from_dive = 
         (height_of_descend - height_of_land) / tan(descend_pitch_rad) + buffer_distance;
     printf("distance_to_land_from_dive = %lf\n", distance_to_land_from_dive);
@@ -99,6 +114,16 @@ int main(int argc, char **argv)
         landing_position_local(0), landing_position_local(1), landing_position_local(2));
     printf("velocity [%lf %lf %lf]\n", velocity_global(0), velocity_global(1), velocity_global(2));
 
+
+    /**
+     * @brief require estimates for x(state) = [x, z, theta, phi, xdot, zdot, thetadot]
+     * @arg x, z, xdot, zdot can be taken care of by the bvp solution
+     * @arg thetadot can be taken care of, and we assume it to be constant linear interpolation from <current point> to 0
+     * @arg phi can be taken care of, and we assume it to be constant linear interpolation from <current point> to max_phi
+     * @arg theta can be assumed with differentially flat outputs from the bvp
+     */
+
+    /** @brief Boundary value problem provides x, z, xdot, zdot estimates */
     matrix::Vector3d alpha, beta, gamma;
     double command_time = 0.1;
 
@@ -137,10 +162,11 @@ int main(int argc, char **argv)
             check_passed = true;
         else
         {
-            printf("iter %d with bad_counts : %d\n", iter, bad_counts);
+            // printf("iter %d with bad_counts : %d\n", iter, bad_counts);
             total_time -= (double)bad_counts * stepping_factor * step;
         }
     }
+    
     auto bvp_time = duration<double>(system_clock::now() - bvp_start).count();
     printf("bvp_time taken : %lfs with total calc time : %lfs\n", bvp_time, total_time);
 
@@ -148,26 +174,61 @@ int main(int argc, char **argv)
     waypoints = get_discrete_points(
         initial_state_local, final_state_local, total_time, command_time, 
         alpha, beta, gamma, waypoint_size);
+
+    // printf("discrete waypoints with size %d :\n", waypoint_size);
+    // for (int i = 0; i < waypoint_size; i++)
+    //     printf("[%lf %lf %lf]\n", waypoints[i](0), waypoints[i](1), waypoints[i](2));
+    // printf("\n");
+
+    // printf("alpha coefficient(%lf, %lf, %lf)\n", alpha(0), alpha(1), alpha(2));
+    // printf("beta coefficient(%lf, %lf, %lf)\n", beta(0), beta(1), beta(2));
+    // printf("gamma coefficient(%lf, %lf, %lf)\n", gamma(0), gamma(1), gamma(2));
+    // printf("waypoint_size(%d) iter(%d)\n", (int)waypoints.size(), iter);
     
-    printf("discrete waypoints:\n");
+    /** @brief theta estimates */
+    vector<double> theta_vector, phi_vector, thetadot_vector; // pitch
+    double phi_factor = max_elevator_rad / (double)(waypoint_size-1);
+
     for (int i = 0; i < waypoint_size; i++)
-        printf("[%lf %lf %lf]\n", waypoints[i](0), waypoints[i](1), waypoints[i](2));
-    printf("\n");
+    {
+        theta_vector.push_back(
+            fpgm.differential_flat_estimated_rotation(
+            Eigen::Vector3d(waypoints[i](6), waypoints[i](7), waypoints[i](8)), 
+            descend_bearing_rad)[1]);
+        phi_vector.push_back(current_elevator_rad + phi_factor*i);
+        thetadot_vector.push_back(current_thetadot);
+    }
 
-    // printf("discrete velocity:\n");
-    // for (int i = 0; i < waypoint_size; i++)
-    //     printf("[%lf %lf %lf]\n", waypoints[i](3), waypoints[i](4), waypoints[i](5));
-    // printf("\n");
+    std::vector<double> initial_guess;
+    for (int i = 0; i < waypoint_size; i++)
+    {
+        // x = [x, z, theta, phi, xdot, zdot, thetadot]
+        // u = [phidot]
+        initial_guess.push_back(waypoints[i](0));
+        initial_guess.push_back(waypoints[i](2));
+        initial_guess.push_back(theta_vector[i]);
+        initial_guess.push_back(phi_vector[i]);
+        initial_guess.push_back(waypoints[i](3));
+        initial_guess.push_back(waypoints[i](5));
+        initial_guess.push_back(thetadot_vector[i]);
+        initial_guess.push_back(0.5);
+    }
+    Eigen::Matrix< double, 7, 1> v;
+    v << 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0;
+    Eigen::Matrix< double, 7, 7> Q = v.array().matrix().asDiagonal();
+    // cout << Q << endl;
+    double R = 100;
 
-    // printf("discrete acceleration:\n");
-    // for (int i = 0; i < waypoint_size; i++)
-    //     printf("[%lf %lf %lf]\n", waypoints[i](6), waypoints[i](7), waypoints[i](8));
-    // printf("\n");
+    if (!fpgm.load_parameters("parameters.yaml", total_time, (int)initial_guess.size(), Q, R))
+        return -1;
 
-    printf("alpha coefficient(%lf, %lf, %lf)\n", alpha(0), alpha(1), alpha(2));
-    printf("beta coefficient(%lf, %lf, %lf)\n", beta(0), beta(1), beta(2));
-    printf("gamma coefficient(%lf, %lf, %lf)\n", gamma(0), gamma(1), gamma(2));
-    printf("waypoint_size(%d) iter(%d)\n", (int)waypoints.size(), iter);
+    if (!fpgm.load_initial_guess(initial_guess))
+        return -1;
+    
+    time_point<std::chrono::system_clock> opt_start = system_clock::now();
+    fpgm.nlopt_optimization();
+    auto opt_time= duration<double>(system_clock::now() - opt_start).count();
+    printf("opt_time taken : %lfs\n", opt_time);
 
     return 0;
 }
