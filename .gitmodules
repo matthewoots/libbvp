@@ -4,3 +4,6 @@
 [submodule "eigen"]
 	path = eigen
 	url = git@github.com:PX4/eigen.git
+[submodule "yaml-cpp"]
+	path = yaml-cpp
+	url = git@github.com:jbeder/yaml-cpp.git
