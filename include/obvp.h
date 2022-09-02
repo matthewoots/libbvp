@@ -241,7 +241,7 @@ namespace obvp
 		matrix::Vector3d af = matrix::Vector3d(
 			final(0,2), final(1,2), final(2,2));
 
-        waypoint_size = (int)round(total_time / command_time);
+        waypoint_size = (int)(total_time / command_time);
         // double corrected_interval = total_time / (double)waypoint_size;
         px4_array_container desired_states;
         for (int i = 0; i < waypoint_size; i++)
@@ -286,7 +286,7 @@ namespace obvp
 		matrix::Vector3d a0 = matrix::Vector3d(
 			initial(0,2), initial(1,2), initial(2,2));
 
-        int waypoint_size = (int)ceil(total_time / command_time);
+        int waypoint_size = (int)(total_time / command_time);
         double corrected_interval = total_time / (double)waypoint_size;
 		int bad_counts = 0;
         for (int i = 0; i < waypoint_size; i++)

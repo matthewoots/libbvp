@@ -1,9 +1,12 @@
 [submodule "PX4-Matrix"]
-	path = PX4-Matrix
+	path = include/PX4-Matrix
 	url = git@github.com:matthewoots/PX4-Matrix.git
 [submodule "eigen"]
-	path = eigen
+	path = include/eigen
 	url = git@github.com:PX4/eigen.git
 [submodule "yaml-cpp"]
 	path = yaml-cpp
 	url = git@github.com:jbeder/yaml-cpp.git
+[submodule "include/matplotlib-cpp"]
+	path = include/matplotlib-cpp
+	url = git@github.com:lava/matplotlib-cpp.git

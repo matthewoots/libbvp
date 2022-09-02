@@ -4,8 +4,8 @@ import math
 import sys 
 
 # Delta wing example for ZoHD dart 250g 
-# M = 0.2565, T = 5 in 4s = 0.8s, b = 0.0325, L = 0.035
-# I = 0.001231
+# M = 0.2565, T = 5 in 4s = 0.8s, b = 0.325, L = 0.35
+# I = 0.012311
 
 # https://physics.stackexchange.com/questions/147452/calculating-the-moment-of-inertia-in-bifilar-pendulums
 

@@ -1,21 +1,46 @@
+/*
+* opt_landing.cpp
+*
+* ---------------------------------------------------------------------
+* Copyright (C) 2022 Matthew (matthewoots at gmail.com)
+*
+*  This program is free software; you can redistribute it and/or
+*  modify it under the terms of the GNU General Public License
+*  as published by the Free Software Foundation; either version 2
+*  of the License, or (at your option) any later version.
+*
+*  This program is distributed in the hope that it will be useful,
+*  but WITHOUT ANY WARRANTY; without even the implied warranty of
+*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*  GNU General Public License for more details.
+* ---------------------------------------------------------------------
+*/
+
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <chrono>
 #include <vector>
 
 #include "obvp.h"
 #include "fpgm_collocation.h"
+#include "matplotlibcpp.h"
+
+// https://stackoverflow.com/questions/5693686/how-to-use-yaml-cpp-in-a-c-program-on-linux
+#include "yaml-cpp/yaml.h"
 
 using namespace obvp;
 using namespace fpgm_collocation;
 using namespace std::chrono;
+namespace plt = matplotlibcpp;
 
 double rad_to_deg = 1/3.14159265358979323846264338327 * 180.0;
 double deg_to_rad = 1/180.0 * 3.14159265358979323846264338327;
 matrix::Vector3d zero = matrix::Vector3d{0, 0, 0};
 
+// Don't comprehend this 
 // since it is in ENU frame, hence it is pry not rpy
-matrix::Vector3d velocity_in_global_frame(double r, double p, double y, double vel) 
+matrix::Vector3d velocity_in_global_frame(double y, double r, double p, double vel) 
 {
     // in the enu frame, x would be the velocity
     matrix::Vector3d relative_vel = matrix::Vector3d(vel, 0, 0);
@@ -24,21 +49,21 @@ matrix::Vector3d velocity_in_global_frame(double r, double p, double y, double v
             0.0,  cos(y),  -sin(y),
             0.0,  sin(y),  cos(y)
         };
-    double pitch[9] = {
-            cos(p),  0.0,  sin(p),
+    double roll[9] = {
+            cos(r),  0.0,  sin(r),
             0.0,  1.0,  0.0,
-            -sin(p),  0.0,  cos(p)
+            -sin(r),  0.0,  cos(r)
         };
     
-    double roll[9] = {
-            cos(r),  -sin(r), 0.0,
-            sin(r),  cos(r), 0.0,
+    double pitch[9] = {
+            cos(p),  -sin(p), 0.0,
+            sin(p),  cos(p), 0.0,
             0.0,  0.0,  1.0
         };
     matrix::SquareMatrix<double, 3> P(pitch);
     matrix::SquareMatrix<double, 3> R(roll);
     matrix::SquareMatrix<double, 3> Y(yaw);
-    return (Y * P) * relative_vel; 
+    return (P * R * Y) * relative_vel; 
 }
 
 
@@ -48,6 +73,14 @@ int main(int argc, char **argv)
     MapProjection _global_local_proj_ref{};
 
     fpgm_collocation::fpgm_collocation fpgm;
+
+    std::string params_directory = "parameters.yaml";
+
+    ifstream f(params_directory.c_str());
+    if (!f.good())
+        return false;
+
+    YAML::Node node = YAML::LoadFile(params_directory);
     
     /**
      * @brief Parameters setting
@@ -59,22 +92,24 @@ int main(int argc, char **argv)
     // Setting the reference of the map with the current position
     _global_local_proj_ref.initReference(WS_LAT_P_LAND, WS_LONG_P_LAND);
 
-    double airspeed = 20.0; // m/s
-    double descend_bearing_deg = 10.0; // bearing in deg
-    double descend_pitch_deg = 30.0; // angle in deg
+    double airspeed = node["airspeed"].as<double>(); // m/s
+    double descend_bearing_deg = node["descend_bearing_deg"].as<double>(); // bearing in deg
+    double descend_pitch_deg = node["descend_pitch_deg"].as<double>(); // angle in deg
+    double buffer_distance = node["buffer_distance"].as<double>(); // angle in deg
     double descend_bearing_rad = descend_bearing_deg * deg_to_rad;
     double descend_pitch_rad = descend_pitch_deg * deg_to_rad;
-    double buffer_distance = 20.0;
 
-    double height_of_descend = 20.0; // m
-    double height_of_land = 0.5; // If there is a structure for the aircraft to land on
+    double height_of_descend = node["height_of_descend"].as<double>(); // m
+    double height_of_land = node["height_of_land"].as<double>(); // If there is a structure for the aircraft to land on
 
     // according to Robust Post-Stall Perching with a Fixed-Wing UAV by Joseph Moore page 28
     // elevator moving upwards is considered negative
-    double max_elevator = -30.0;
-    double max_elevator_rad = descend_bearing_deg * max_elevator;
-    double current_elevator_rad = 0.0;
-    double current_thetadot = 0.0;
+    double max_elevator = node["phi_contrain"].as<double>();
+    double max_elevator_rad = max_elevator * deg_to_rad;
+    double current_elevator_rad = node["current_elevator_rad"].as<double>();
+    double current_thetadot = node["current_thetadot"].as<double>();
+
+    double command_time = node["command_time"].as<double>();
 
     // Calculate the descend distance
     double distance_to_land_from_dive = 
@@ -125,7 +160,6 @@ int main(int argc, char **argv)
 
     /** @brief Boundary value problem provides x, z, xdot, zdot estimates */
     matrix::Vector3d alpha, beta, gamma;
-    double command_time = 0.1;
 
     matrix::SquareMatrix<double, 3> initial_state_local;
     initial_state_local.setZero();
@@ -141,8 +175,20 @@ int main(int argc, char **argv)
     final_state_local.col(1) = zero; // Velocity
     final_state_local.col(2) = zero; // Acceleration
 
-    double total_time = 8.0;
-    double step = 0.2, stepping_factor = 1.0/10.0;
+    // Make a guess to reach the final goal point
+    // distance / sqrt(vx^2 + vy^2) * factor
+    double guess_factor = 3.0;
+    double stepping_factor = 1.0/10.0;
+
+    // make sure total time is a factor of command time
+    double total_time_division = 
+        round(distance_to_land_from_dive / 
+        sqrt(pow(velocity_global(0),2) + pow(velocity_global(1),2)) / 
+        command_time);
+
+    double total_time = total_time_division * command_time * guess_factor;
+    // BVP guessing step (to reduce by)
+    double step = command_time * guess_factor;
     bool check_passed = false;
     int iter = 0;
     px4_array_container waypoints;
@@ -189,46 +235,93 @@ int main(int argc, char **argv)
     vector<double> theta_vector, phi_vector, thetadot_vector; // pitch
     double phi_factor = max_elevator_rad / (double)(waypoint_size-1);
 
+    double trim = - descend_pitch_rad;
     for (int i = 0; i < waypoint_size; i++)
     {
         theta_vector.push_back(
-            fpgm.differential_flat_estimated_rotation(
+            trim - fpgm.differential_flat_estimated_rotation(
             Eigen::Vector3d(waypoints[i](6), waypoints[i](7), waypoints[i](8)), 
             descend_bearing_rad)[1]);
-        phi_vector.push_back(current_elevator_rad + phi_factor*i);
+        phi_vector.push_back(current_elevator_rad - phi_factor*i);
         thetadot_vector.push_back(current_thetadot);
     }
 
+    /** @brief do a transformation to orientate waypoints to align with x axis */
+    std::vector<matrix::Vector2d> vector_t_waypoints, vector_t_velocity;
+    double yaw[4] = {
+        cos(descend_bearing_backwards),  -sin(descend_bearing_backwards),
+        sin(descend_bearing_backwards),  cos(descend_bearing_backwards)
+    };
+    matrix::SquareMatrix<double, 2> Y(yaw);
+    for (int i = 0; i < waypoint_size; i++)
+    {
+        matrix::Vector2d t_waypoints = Y.I() *
+            matrix::Vector2d(waypoints[i](0), waypoints[i](1));
+        matrix::Vector2d t_velocity = Y.I() *
+            matrix::Vector2d(waypoints[i](3), waypoints[i](4));
+        
+        vector_t_waypoints.push_back(t_waypoints);
+        vector_t_velocity.push_back(t_velocity);
+        printf("pos [%lf %lf] vel [%lf %lf] theta [%lf] phi [%lf]\n", 
+            t_waypoints(0), waypoints[i](2),
+            t_velocity(0), waypoints[i](5),
+            theta_vector[i], phi_vector[i]);
+    }
+
     std::vector<double> initial_guess;
+    std::vector<double> initial_x, initial_z;
     for (int i = 0; i < waypoint_size; i++)
     {
         // x = [x, z, theta, phi, xdot, zdot, thetadot]
         // u = [phidot]
-        initial_guess.push_back(waypoints[i](0));
+        initial_guess.push_back(vector_t_waypoints[i](0));
         initial_guess.push_back(waypoints[i](2));
         initial_guess.push_back(theta_vector[i]);
         initial_guess.push_back(phi_vector[i]);
-        initial_guess.push_back(waypoints[i](3));
+        initial_guess.push_back(vector_t_velocity[i](0));
         initial_guess.push_back(waypoints[i](5));
         initial_guess.push_back(thetadot_vector[i]);
-        initial_guess.push_back(0.5);
+        initial_guess.push_back(0.0);
+
+        initial_x.push_back(vector_t_waypoints[i](0));
+        initial_z.push_back(waypoints[i](2));
     }
     Eigen::Matrix< double, 7, 1> v;
-    v << 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0;
+    v << 0.05, 0.10, 300.0, 300.0, 0.05, 0.05, 2000.0;
     Eigen::Matrix< double, 7, 7> Q = v.array().matrix().asDiagonal();
     // cout << Q << endl;
-    double R = 100;
+    double R = 200;
 
-    if (!fpgm.load_parameters("parameters.yaml", total_time, (int)initial_guess.size(), Q, R))
+    if (!fpgm.load_parameters(
+        params_directory, total_time, 
+        (int)initial_guess.size(), Q, R,
+        initial_x, initial_z))
         return -1;
 
     if (!fpgm.load_initial_guess(initial_guess))
         return -1;
     
     time_point<std::chrono::system_clock> opt_start = system_clock::now();
-    fpgm.nlopt_optimization();
+    fpgm_collocation::fpgm_collocation::control_state control;
+    control = fpgm.nlopt_optimization();
     auto opt_time= duration<double>(system_clock::now() - opt_start).count();
     printf("opt_time taken : %lfs\n", opt_time);
+
+
+    /** @brief Visualization **/
+    // Set the size of output image to 1200x780 pixels
+    plt::figure_size(980, 460);
+    // plot a red dashed line from given x and y data.
+    plt::named_plot("optimal", control.x, control.z, "r--");
+    plt::named_plot("guess", initial_x, initial_z, "b--");
+    
+    // Enable legend.
+    plt::legend();
+    
+    string title = "height against x";
+    plt::title(title); // add graph title
+    plt::grid(true);
+    plt::show();
 
     return 0;
 }
