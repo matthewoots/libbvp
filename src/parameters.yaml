@@ -1,5 +1,5 @@
 airspeed: 20.0
-descend_bearing_deg: -10.0
+descend_bearing_deg: 90.0
 descend_pitch_deg: 30.0
 buffer_distance: 20.0
 
@@ -18,7 +18,7 @@ surface_area_wing: 0.11398
 mass: 0.2565
 moments_of_inertia: 0.012311
 
-velocity_constrain: 20.0
+velocity_constrain: 18.0
 theta_contrain: 1.5707
 phi_contrain: 0.3926
 thetadot_constrain: 2.000

@@ -3,9 +3,11 @@
 ## Installation
 `libprecisionbvp` optimal boundary value problem library using some PX4 modules. OBVP is referenced from Mark Mueller from https://flyingmachinearena.org/wp-content/uploads/mueTRO15.pdf
 
-In addition `fpgm_collocation` header file consist of the flat plane glider dynamics and non-linear optimization solving the optimal trajectory problem for a `fpgm` type of fixed wing.
+In addition `fpgm_collocation` header file consist of the flat plane glider dynamics and non-linear optimization solving the optimal trajectory problem for a `fpgm` type of fixed wing. Robust Post-Stall Perching with a Fixed-Wing UAV by Joseph Moore https://dspace.mit.edu/handle/1721.1/93861
 
 This precision landing maneuver utilizes the Boundary Value Problem to provide a guess for the optimization and direct collocation method used in propagating the states forward in time.
+
+![Alt Text](precision_landing.png)
 
 ### PX4 Libraries used
 - mathlib : Some useful definitions for math classes

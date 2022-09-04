@@ -128,7 +128,8 @@ int main(int argc, char **argv)
         (float)distance_to_land_from_dive, &dive_position(0), &dive_position(1));
 
     matrix::Vector3d velocity_global = 
-        velocity_in_global_frame(0.0, descend_pitch_rad, descend_bearing_rad, airspeed);
+        velocity_in_global_frame(
+        0.0, descend_pitch_rad, descend_bearing_rad, airspeed);
 
     matrix::Vector3d dive_position_local;
     matrix::Vector3d landing_position_local = 
@@ -233,15 +234,19 @@ int main(int argc, char **argv)
     
     /** @brief theta estimates */
     vector<double> theta_vector, phi_vector, thetadot_vector; // pitch
-    double phi_factor = max_elevator_rad / (double)(waypoint_size-1);
+    // phi should become more negative according to the coordinates
+    double phi_factor = - max_elevator_rad / (double)(waypoint_size-1);
+    double theta_factor = (2 * descend_pitch_rad) / (double)(waypoint_size-1);
 
     double trim = - descend_pitch_rad;
     for (int i = 0; i < waypoint_size; i++)
     {
-        theta_vector.push_back(
-            trim - fpgm.differential_flat_estimated_rotation(
-            Eigen::Vector3d(waypoints[i](6), waypoints[i](7), waypoints[i](8)), 
-            descend_bearing_rad)[1]);
+        // theta_vector.push_back(
+        //     trim - fpgm.differential_flat_estimated_rotation(
+        //     Eigen::Vector3d(waypoints[i](6), waypoints[i](7), waypoints[i](8)), 
+        //     descend_bearing_rad)[1]);
+
+        theta_vector.push_back(trim + theta_factor * i);
         phi_vector.push_back(current_elevator_rad - phi_factor*i);
         thetadot_vector.push_back(current_thetadot);
     }
@@ -270,16 +275,29 @@ int main(int argc, char **argv)
 
     std::vector<double> initial_guess;
     std::vector<double> initial_x, initial_z;
+    fpgm_collocation::fpgm_collocation::control_state control_guess;
     for (int i = 0; i < waypoint_size; i++)
     {
         // x = [x, z, theta, phi, xdot, zdot, thetadot]
         // u = [phidot]
         initial_guess.push_back(vector_t_waypoints[i](0));
+        control_guess.x.push_back(vector_t_waypoints[i](0));
+
         initial_guess.push_back(waypoints[i](2));
+        control_guess.z.push_back(waypoints[i](2));
+        
         initial_guess.push_back(theta_vector[i]);
+        control_guess.theta.push_back(theta_vector[i]);
+
         initial_guess.push_back(phi_vector[i]);
+        control_guess.phi.push_back(phi_vector[i]);
+
         initial_guess.push_back(vector_t_velocity[i](0));
+        control_guess.vx.push_back(vector_t_velocity[i](0));
+
         initial_guess.push_back(waypoints[i](5));
+        control_guess.vz.push_back(waypoints[i](5));
+
         initial_guess.push_back(thetadot_vector[i]);
         initial_guess.push_back(0.0);
 
@@ -287,10 +305,10 @@ int main(int argc, char **argv)
         initial_z.push_back(waypoints[i](2));
     }
     Eigen::Matrix< double, 7, 1> v;
-    v << 0.05, 0.10, 300.0, 300.0, 0.05, 0.05, 2000.0;
+    v << 0.05, 0.20, 20.0, 20.0, 0.05, 0.05, 200.0;
     Eigen::Matrix< double, 7, 7> Q = v.array().matrix().asDiagonal();
     // cout << Q << endl;
-    double R = 200;
+    double R = 400;
 
     if (!fpgm.load_parameters(
         params_directory, total_time, 
@@ -302,19 +320,46 @@ int main(int argc, char **argv)
         return -1;
     
     time_point<std::chrono::system_clock> opt_start = system_clock::now();
-    fpgm_collocation::fpgm_collocation::control_state control;
-    control = fpgm.nlopt_optimization();
+    fpgm_collocation::fpgm_collocation::control_state control_opt;
+    control_opt = fpgm.nlopt_optimization();
     auto opt_time= duration<double>(system_clock::now() - opt_start).count();
     printf("opt_time taken : %lfs\n", opt_time);
-
 
     /** @brief Visualization **/
     // Set the size of output image to 1200x780 pixels
     plt::figure_size(980, 460);
-    // plot a red dashed line from given x and y data.
-    plt::named_plot("optimal", control.x, control.z, "r--");
-    plt::named_plot("guess", initial_x, initial_z, "b--");
-    
+
+    // plot a line from given x and y data.
+    plt::named_plot("guess_" + to_string(airspeed) + "_" + to_string(descend_pitch_deg), 
+        control_guess.x, control_guess.z, "--");
+
+    plt::named_plot("optimal_" + to_string(airspeed) + "_" + to_string(descend_pitch_deg), 
+        control_opt.x, control_opt.z);
+
+    for (int i = 0; i < waypoint_size; i++)
+    {
+        // z_guess axis
+        std::vector<double> z_guess;
+        z_guess.push_back(control_guess.z[i]);
+        z_guess.push_back(control_guess.z[i] + sin(control_guess.theta[i]));
+        // x_guess axis
+        std::vector<double> x_guess;
+        x_guess.push_back(control_guess.x[i]);
+        x_guess.push_back(control_guess.x[i] - cos(control_guess.theta[i]));
+
+        // z_opt axis
+        std::vector<double> z_opt;
+        z_opt.push_back(control_opt.z[i]);
+        z_opt.push_back(control_opt.z[i] + sin(control_opt.theta[i]));
+        // x_opt axis
+        std::vector<double> x_opt;
+        x_opt.push_back(control_opt.x[i]);
+        x_opt.push_back(control_opt.x[i] - cos(control_opt.theta[i]));
+
+        plt::plot(x_guess, z_guess);
+        plt::plot(x_opt, z_opt);
+    } 
+
     // Enable legend.
     plt::legend();
     

@@ -31,13 +31,14 @@
 #include "geo.h"
 #include "mathlib.h"
 #include "Eigen/Dense"
-#include <nlopt.h>
+#include <nlopt.hpp>
 
 // https://stackoverflow.com/questions/5693686/how-to-use-yaml-cpp-in-a-c-program-on-linux
 #include "yaml-cpp/yaml.h"
 
 using namespace std;
 using namespace Eigen;
+using namespace nlopt;
 // using matrix::Vector2d;
 // using matrix::Vector2f;
 using matrix::wrap_pi;
@@ -90,6 +91,12 @@ namespace fpgm_collocation
                 double pd_c;
                 vector<double> ix;
                 vector<double> iz;
+            };
+
+            struct combined_param
+            {
+                fpgm_param fp;
+                optimization_constrain oc;
             };
 
             double cl(double aoa) { return 2 * sin(aoa) * cos(aoa);};
@@ -191,13 +198,18 @@ namespace fpgm_collocation
              * Total size is 8 variables * N steps
              *  
             **/
+            /** @brief C version **/
             static void collocation_eq_constraints(
                 unsigned m, double *result, unsigned n, const double *x, double *grad, void *data)
             {
                 // Data will provide start state
 
                 static equations_and_helper eq;
-                equations_and_helper::fpgm_param *params = (equations_and_helper::fpgm_param*)data;
+                equations_and_helper::combined_param *params = 
+                    (equations_and_helper::combined_param*)data;
+                
+                equations_and_helper::fpgm_param fpgm = params->fp;
+                equations_and_helper::optimization_constrain boundary = params->oc;
 
                 int equality_size = n / 8;
 
@@ -216,12 +228,12 @@ namespace fpgm_collocation
                     Eigen::VectorXd f_k = eq.fpgm_dynamics(
                         x1[0], x1[1], x1[2], x1[3], 
                         x1[4], x1[5], x1[6], x[7+8*i],
-                        *params);
+                        fpgm);
                     // future dynamics
                     Eigen::VectorXd f_k_1 = eq.fpgm_dynamics(
                         x2[0], x2[1], x2[2], x2[3], 
                         x2[4], x2[5], x2[6], x[7+8*(i+1)],
-                        *params);
+                        fpgm);
 
                     Eigen::VectorXd x_k = eq.std_vector_to_eigen_vector(x1);
                     Eigen::VectorXd x_k_1 = eq.std_vector_to_eigen_vector(x2);
@@ -230,7 +242,7 @@ namespace fpgm_collocation
                     // https://arxiv.org/pdf/2001.11478.pdf
                     // https://epubs.siam.org/doi/pdf/10.1137/16M1062569
                     Eigen::VectorXd single_results_vector = 
-                        x_k - x_k_1 + (params->h)/2 * (f_k + f_k_1);
+                        x_k - x_k_1 + (fpgm.h)/2 * (f_k + f_k_1);
 
                     // https://dspace.mit.edu/handle/1721.1/93861
                     // Eigen::VectorXd lhs = params->h * f_k;
@@ -242,11 +254,20 @@ namespace fpgm_collocation
                     result[7+i*8] = 0.0;
                 }
 
-                result[0+0*8] = 0.0;
-                result[1+0*8] = 0.0;
+                // For x constrains on start and end
+                for (int i = 0; i < 1; i++)
+                    result[(equality_size-1)*8 + i] = 1E10 * 
+                        (x[i*(equality_size-1)*(8)] - 
+                        boundary.ix[i*(equality_size-1)]);
+                
+                // For z constrains on start and end
+                // for (int i = 0; i < 1; i++)
+                //     result[(equality_size-1)*8 + 2 * i] = 1E8 * 
+                //         (x[i*(equality_size-1)*(8) + 1] - 
+                //         boundary.iz[i*(equality_size-1)]);
+                
+                // printf("completed_equality_constrains\n");
 
-                result[0+(equality_size-1)*8] = 0.0;
-                result[1+(equality_size-1)*8] = 0.0;
             }
 
             static void inequality_constraints(
@@ -262,34 +283,37 @@ namespace fpgm_collocation
                     // Give a threshold that is from the guess
                     // fc(x) <= 0
                     // scaling factor: y = -0.01x^2 + (N/10)x
-                    // double quadratic_threshold_x =
-                    //     -0.01 * pow(i, 2) + inequality_size/10 * i;
-                    // double quadratic_threshold_z =
-                    //     -0.01 * pow(i, 2) + inequality_size/10 * i;
+                    double quadratic_threshold_x =
+                        -0.01 * pow(i, 2) + inequality_size/10 * i;
+                    double quadratic_threshold_z =
+                        -0.01 * pow(i, 2) + inequality_size/10 * i;
 
-                    // x(n) is smaller than x(n+1)
-                    // if (i < inequality_size-1)
-                    //     result[0+i*8] = x[0+i*8] - x[0+(i+1)*8];
+                    // result[0+i*8] = 
+                    //     abs((params->ix)[i] - x[0+i*8]); // x constrain
+                    // if (i > 0)
+                    //     result[1+i*8] = 
+                    //         x[0+(i-1)*8] - x[0+i*8]; // x constrain
+
+                    result[0+i*8] = 
+                        abs((params->ix)[i] - x[0+i*8]) - 
+                        quadratic_threshold_x; // x constrain
                     
-                    // result[0+i*8] = 
-                    //     (params->ix)[i] - x[0+i*8]; // x constrain
-                    // result[0+i*8] = 
-                    //     abs((params->ix)[i] - x[0+i*8]) - 
-                    //     quadratic_threshold_x; // x constrain
                     // result[1+i*8] = 
                     //     abs((params->iz)[i] - x[1+i*8]) - 
                     //     quadratic_threshold_z; // z constrain
                     
-                    // result[2+i*8] = abs(x[2+i*8]) - params->t_c; // theta constrain
-                    // result[3+i*8] = abs(x[3+i*8]) - params->p_c; // phi constrain
+                    result[2+i*8] = abs(x[2+i*8]) - params->t_c; // theta constrain
+                    result[3+i*8] = abs(x[3+i*8]) - params->p_c; // phi constrain
                     
-                    // // velocity x and z constrain
-                    // result[4+i*8] = abs(x[4+i*8]) - params->v_c;
-                    // result[5+i*8] = abs(x[5+i*8]) - params->v_c;
+                    // velocity x and z constrain
+                    result[4+i*8] = abs(x[4+i*8]) - params->v_c;
+                    result[5+i*8] = abs(x[5+i*8]) - params->v_c;
 
-                    // result[6+i*8] = abs(x[6+i*8]) - params->td_c; // thetadot constrain
-                    // result[7+i*8] = abs(x[7+i*8]) - params->pd_c; // phidot constrain
+                    result[6+i*8] = abs(x[6+i*8]) - params->td_c; // thetadot constrain
+                    result[7+i*8] = abs(x[7+i*8]) - params->pd_c; // phidot constrain
                 }
+
+                // printf("completed_inequality_constrains\n");
             }
 
 
@@ -302,6 +326,7 @@ namespace fpgm_collocation
                 double factor = params->h;
                 double cost = 0;
                 int state_input_length = n / 8;
+                double kinetic_energy = 0;
 
                 // for (int i = 0; i < state_input_length; i++)
                 //     cost += factor * (pow(x[7+8*i], 2) + pow(x[7+8*(i+1)], 2));
@@ -314,13 +339,14 @@ namespace fpgm_collocation
                     
                     auto state_term = x1.transpose() * params->Q * x1;
 
-                    double kinetic_energy = 0.5 * params->mass * (pow(x1[4],2) + pow(x1[5],2));
+                    kinetic_energy += 0.5 * params->mass * (pow(x1[4],2) + pow(x1[5],2));
 
                     double input_term = x[7+8*i] * params->R * x[7+8*i];
+
                     cost += state_term + input_term;
                 }
 
-                cost *= factor;
+                cost = cost * factor + kinetic_energy;
 
                 printf("cost = %lf\n", cost);
                 return cost;
@@ -338,7 +364,6 @@ namespace fpgm_collocation
                 vector<double> vx;
                 vector<double> vz;
             };
-            
 
             bool load_parameters(
                 std::string directory, double total, int size, 
@@ -439,23 +464,55 @@ namespace fpgm_collocation
                 if (guess.empty())
                     return final_vector;
                 
-                // int equality_vector_size = N*(8-1);
                 int dimension = N*(8);
-                double tol[dimension] = {1E-8};
+                double tolerance = 1E-8;
+                equations_and_helper::combined_param cp;
+                cp.fp = param;
+                cp.oc = boundary; 
 
+                /** @brief C++ version: erroneous**/
+                // const std::vector<double> tol_eq(dimension+2, 1E-8);
+                // const std::vector<double> tol_ineq(dimension, 1E-8);
+
+                // nlopt::opt opt(nlopt::LN_COBYLA, (uint)guess.size());
+
+                // opt.set_xtol_rel(1e-6);
+                // opt.set_ftol_rel(1e-3);
+                // opt.set_maxeval(1E3);
+                // opt.set_maxtime(2.0); 
+                
+                // opt.set_min_objective(control_effort_objective, &param);
+
+                // opt.add_equality_mconstraint(
+                //     collocation_eq_constraints, &param, tol_eq);
+                // opt.add_inequality_mconstraint(
+                //     inequality_constraints, &boundary, tol_ineq);
+
+                // std::vector<double> x = guess;
+
+                // double cost = 0;
+                // nlopt::result result = opt.optimize(x, cost);
+                // printf("number of iterations: %d \n", opt.get_numevals());
+                
+                /** @brief C version **/
+                double tol_eq[dimension + 2] = {tolerance};
+                double tol_ineq[dimension] = {tolerance};
+                
                 nlopt_opt opt = nlopt_create(NLOPT_LN_COBYLA, guess.size());
                 nlopt_set_min_objective(opt, control_effort_objective, &param);
-                
-                nlopt_set_ftol_abs(opt, 1E-6);
-                nlopt_set_xtol_rel(opt, 1E-3);
-                nlopt_set_maxeval(opt, 1E3);
-                nlopt_set_maxtime(opt, 2.0); 
-                
-                nlopt_add_equality_mconstraint(
-                    opt, dimension, collocation_eq_constraints, &param, tol);
 
-                // nlopt_add_inequality_mconstraint(
-                //     opt, dimension, inequality_constraints, &boundary, tol);
+                nlopt_set_ftol_abs(opt, 1E-6);
+                nlopt_set_xtol_rel(opt, tolerance);
+                nlopt_set_maxeval(opt, 1E3);
+                nlopt_set_maxtime(opt, 1.0); 
+
+                nlopt_add_equality_mconstraint(
+                    opt, dimension, collocation_eq_constraints, &cp, tol_eq);
+                nlopt_add_inequality_mconstraint(
+                    opt, dimension, inequality_constraints, &boundary, tol_ineq);
+                
+                double x[guess.size()];
+                std::copy(guess.begin(), guess.end(), x);
 
                 // double lb[guess.size()], ub[guess.size()];
                 // set_bounds(lb, ub);
@@ -463,10 +520,7 @@ namespace fpgm_collocation
                 // nlopt_set_lower_bounds(opt, lb);
                 // nlopt_set_upper_bounds(opt, ub);
 
-                double x[guess.size()];
-                std::copy(guess.begin(), guess.end(), x);
-
-                int x_size = sizeof(x) / sizeof(int);
+                // int x_size = sizeof(x) / sizeof(int);
                 // printf("guess_size = %d\n", (int)guess.size());
                 // printf("x:\n");
                 // for (int i = 0; i < guess.size(); i++)
@@ -499,6 +553,8 @@ namespace fpgm_collocation
                     final_vector.vx.push_back(x[4+i*8]);
                     final_vector.vz.push_back(x[5+i*8]);
                 }
+
+                nlopt_destroy(opt);
 
                 return final_vector;
             }
