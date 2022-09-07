@@ -178,6 +178,13 @@ namespace fpgm_collocation
                 return v;
             }
 
+            void set_bounded_constrains(double *result, int index, double x, double bound)
+            {
+                // fc(x) <= 0
+                result[index] = - x - bound; // -bound <= x
+                result[index+1] = x - bound; // x <= bound
+            }
+
     };
 
     class fpgm_collocation
@@ -198,7 +205,6 @@ namespace fpgm_collocation
              * Total size is 8 variables * N steps
              *  
             **/
-            /** @brief C version **/
             static void collocation_eq_constraints(
                 unsigned m, double *result, unsigned n, const double *x, double *grad, void *data)
             {
@@ -211,119 +217,115 @@ namespace fpgm_collocation
                 equations_and_helper::fpgm_param fpgm = params->fp;
                 equations_and_helper::optimization_constrain boundary = params->oc;
 
-                int equality_size = n / 8;
+                int state_input_length = n / 8;
 
-                for (int i = 0; i < equality_size; i++)
-                {
-                    // current state 
-                    std::vector<double> x1 {
-                        x[0+8*i], x[1+8*i], x[2+8*i], x[3+8*i], 
-                        x[4+8*i], x[5+8*i], x[6+8*i]};
-                    // future state
-                    std::vector<double> x2 {
-                        x[0+8*(i+1)], x[1+8*(i+1)], x[2+8*(i+1)], x[3+8*(i+1)], 
-                        x[4+8*(i+1)], x[5+8*(i+1)], x[6+8*(i+1)]};
-
-                    // current dynamics 
-                    Eigen::VectorXd f_k = eq.fpgm_dynamics(
-                        x1[0], x1[1], x1[2], x1[3], 
-                        x1[4], x1[5], x1[6], x[7+8*i],
-                        fpgm);
-                    // future dynamics
-                    Eigen::VectorXd f_k_1 = eq.fpgm_dynamics(
-                        x2[0], x2[1], x2[2], x2[3], 
-                        x2[4], x2[5], x2[6], x[7+8*(i+1)],
-                        fpgm);
-
-                    Eigen::VectorXd x_k = eq.std_vector_to_eigen_vector(x1);
-                    Eigen::VectorXd x_k_1 = eq.std_vector_to_eigen_vector(x2);
-                    
-                    // 2 papers give the same collocation constrains
-                    // https://arxiv.org/pdf/2001.11478.pdf
-                    // https://epubs.siam.org/doi/pdf/10.1137/16M1062569
-                    Eigen::VectorXd single_results_vector = 
-                        x_k - x_k_1 + (fpgm.h)/2 * (f_k + f_k_1);
-
-                    // https://dspace.mit.edu/handle/1721.1/93861
-                    // Eigen::VectorXd lhs = params->h * f_k;
-                    // Eigen::VectorXd rhs = x_k_1 - x_k;
-                    // Eigen::VectorXd single_results_vector = lhs - rhs;
-
-                    for (int j = 0; j < 7; j++)
-                        result[j+i*8] = single_results_vector[j];
-                    result[7+i*8] = 0.0;
-                }
-
-                // For x constrains on start and end
-                for (int i = 0; i < 1; i++)
-                    result[(equality_size-1)*8 + i] = 1E10 * 
-                        (x[i*(equality_size-1)*(8)] - 
-                        boundary.ix[i*(equality_size-1)]);
-                
-                // For z constrains on start and end
-                // for (int i = 0; i < 1; i++)
-                //     result[(equality_size-1)*8 + 2 * i] = 1E8 * 
-                //         (x[i*(equality_size-1)*(8) + 1] - 
-                //         boundary.iz[i*(equality_size-1)]);
-                
-                // printf("completed_equality_constrains\n");
-
-            }
-
-            static void inequality_constraints(
-                unsigned m, double *result, unsigned n, const double *x, double *grad, void *data)
-            {
-                equations_and_helper::optimization_constrain *params = 
-                    (equations_and_helper::optimization_constrain*)data;
-
-                int inequality_size = n / 8;
-
-                for (int i = 0; i < inequality_size; i++)
+                for (int i = 0; i < state_input_length; i++)
                 {
                     // Give a threshold that is from the guess
                     // fc(x) <= 0
                     // scaling factor: y = -0.01x^2 + (N/10)x
-                    double quadratic_threshold_x =
-                        -0.01 * pow(i, 2) + inequality_size/10 * i;
-                    double quadratic_threshold_z =
-                        -0.01 * pow(i, 2) + inequality_size/10 * i;
+                    // double quadratic_threshold_x =
+                    //     -0.01 * pow(i, 2) + state_input_length/10 * i;
+                    // double quadratic_threshold_z =
+                    //     -0.01 * pow(i, 2) + state_input_length/10 * i;
 
-                    // result[0+i*8] = 
-                    //     abs((params->ix)[i] - x[0+i*8]); // x constrain
-                    // if (i > 0)
-                    //     result[1+i*8] = 
-                    //         x[0+(i-1)*8] - x[0+i*8]; // x constrain
+                    // Since for dynamics we do not have a state after this
+                    if (i < state_input_length - 1)
+                    {
+                        // current state 
+                        std::vector<double> x1 {
+                            x[0+8*i], x[1+8*i], x[2+8*i], x[3+8*i], 
+                            x[4+8*i], x[5+8*i], x[6+8*i]};
+                        // future state
+                        std::vector<double> x2 {
+                            x[0+8*(i+1)], x[1+8*(i+1)], x[2+8*(i+1)], x[3+8*(i+1)], 
+                            x[4+8*(i+1)], x[5+8*(i+1)], x[6+8*(i+1)]};
 
-                    result[0+i*8] = 
-                        abs((params->ix)[i] - x[0+i*8]) - 
-                        quadratic_threshold_x; // x constrain
-                    
-                    // result[1+i*8] = 
-                    //     abs((params->iz)[i] - x[1+i*8]) - 
-                    //     quadratic_threshold_z; // z constrain
-                    
-                    result[2+i*8] = abs(x[2+i*8]) - params->t_c; // theta constrain
-                    result[3+i*8] = abs(x[3+i*8]) - params->p_c; // phi constrain
-                    
-                    // velocity x and z constrain
-                    result[4+i*8] = abs(x[4+i*8]) - params->v_c;
-                    result[5+i*8] = abs(x[5+i*8]) - params->v_c;
+                        // current dynamics 
+                        Eigen::VectorXd f_k = eq.fpgm_dynamics(
+                            x1[0], x1[1], x1[2], x1[3], 
+                            x1[4], x1[5], x1[6], x[7+8*i],
+                            fpgm);
+                        // future dynamics
+                        Eigen::VectorXd f_k_1 = eq.fpgm_dynamics(
+                            x2[0], x2[1], x2[2], x2[3], 
+                            x2[4], x2[5], x2[6], x[7+8*(i+1)],
+                            fpgm);
 
-                    result[6+i*8] = abs(x[6+i*8]) - params->td_c; // thetadot constrain
-                    result[7+i*8] = abs(x[7+i*8]) - params->pd_c; // phidot constrain
+                        Eigen::VectorXd x_k = eq.std_vector_to_eigen_vector(x1);
+                        Eigen::VectorXd x_k_1 = eq.std_vector_to_eigen_vector(x2);
+                        
+                        // 2 papers give the same collocation constrains
+                        // https://arxiv.org/pdf/2001.11478.pdf
+                        // https://epubs.siam.org/doi/pdf/10.1137/16M1062569
+                        Eigen::VectorXd single_results_vector = 
+                            x_k - x_k_1 + (fpgm.h)/2 * (f_k + f_k_1);
+
+                        // https://dspace.mit.edu/handle/1721.1/93861
+                        // Eigen::VectorXd lhs = params->h * f_k;
+                        // Eigen::VectorXd rhs = x_k_1 - x_k;
+                        // Eigen::VectorXd single_results_vector = lhs - rhs;
+
+                        // (0 & 1) x constrains for lower and upper bound
+                        // (2 & 3) z constrains for lower and upper bound
+                        // eq.set_localized_bounded_constrains(
+                        //     result, (0 + (i*16)), single_results_vector[0], boundary.ix[i], quadratic_threshold_x);
+                        // printf("index %d threshold %lf difference %lf x %lf ix %lf\n", 
+                        //     i, quadratic_threshold_x, single_results_vector[0] - boundary.ix[i],
+                        //     single_results_vector[0], boundary.ix[i]);
+                        // eq.set_localized_bounded_constrains(
+                        //     result, (2 + (i*16)), single_results_vector[1], x[1+i*8], quadratic_threshold_z);
+
+                        // (0 to 13) constrains dynamic feasibility
+                        for (int j = 0; j < 7; j++)
+                        {
+                            double tolerance = 0.01;
+                            eq.set_bounded_constrains(result, ((j*2) + (i*26)), single_results_vector[j], tolerance);
+
+                            // if (single_results_vector[j] > tolerance || single_results_vector[j] < -tolerance)
+                            //     printf(" %d violate constrains %lf / %lf\n", 
+                            //         j, single_results_vector[j], tolerance);
+                        }
+                    }
+                    
+                    // (14 & 15) theta constrains for lower and upper bound
+                    eq.set_bounded_constrains(result, (0 + 14 + (i*26)), x[2+(i*8)], boundary.t_c);
+                    // (16 & 17) phi constrains for lower and upper bound
+                    eq.set_bounded_constrains(result, (2 + 14 + (i*26)), x[3+(i*8)], boundary.p_c);
+                    // (18 & 19) velocity x constrains for lower and upper bound
+                    // (20 & 21) velocity z constrains for lower and upper bound
+                    eq.set_bounded_constrains(result, (4 + 14 + (i*26)), x[4+(i*8)], boundary.v_c);
+                    eq.set_bounded_constrains(result, (6 + 14 + (i*26)), x[5+(i*8)], boundary.v_c);
+
+                    // (22 & 23) thetadot constrains for lower and upper bound
+                    eq.set_bounded_constrains(result, (8 + 14 + (i*26)), x[6+(i*8)], boundary.td_c);
+
+                    // (24 & 25) phidot constrains for lower and upper bound
+                    eq.set_bounded_constrains(result, (10 + 14 + (i*26)), x[7+(i*8)], boundary.pd_c);
                 }
 
+                eq.set_bounded_constrains(result, 0 + (state_input_length)*26, x[0], boundary.ix[0]);
+                eq.set_bounded_constrains(result, 2 + (state_input_length)*26, x[1], boundary.iz[0]);
+                // printf("difference %lf constrains %lf / %lf\n", 
+                //     x[0] - boundary.ix[0], x[0], boundary.ix[0]);
+
                 // printf("completed_inequality_constrains\n");
+
             }
 
 
             static double control_effort_objective(unsigned n, const double *x, double *grad, void *data)
             {
-                equations_and_helper::fpgm_param *params = (equations_and_helper::fpgm_param*)data;
+                static equations_and_helper eq;
+                equations_and_helper::combined_param *params = 
+                    (equations_and_helper::combined_param*)data;
+                
+                equations_and_helper::fpgm_param fpgm = params->fp;
+                equations_and_helper::optimization_constrain boundary = params->oc;
 
                 // Assuming h_k = uniform, timestep is uniform
                 // double factor = params->h / 2;
-                double factor = params->h;
+                double factor = fpgm.h;
                 double cost = 0;
                 int state_input_length = n / 8;
                 double kinetic_energy = 0;
@@ -334,19 +336,19 @@ namespace fpgm_collocation
                 for (int i = 0; i < state_input_length; i++)
                 {
                     Eigen::VectorXd x1(7);
-                    x1 << x[0+8*i], x[1+8*i], x[2+8*i], x[3+8*i], 
-                        x[4+8*i], x[5+8*i], x[6+8*i];
+                    x1 << x[0+8*i], x[1+8*i], 
+                        x[2+8*i], x[3+8*i], 
+                        x[4+8*i], x[5+8*i], 
+                        x[6+8*i];
                     
-                    auto state_term = x1.transpose() * params->Q * x1;
+                    auto state_term = x1.transpose() * fpgm.Q * x1;
 
-                    kinetic_energy += 0.5 * params->mass * (pow(x1[4],2) + pow(x1[5],2));
-
-                    double input_term = x[7+8*i] * params->R * x[7+8*i];
+                    double input_term = x[7+8*i] * fpgm.R * x[7+8*i];
 
                     cost += state_term + input_term;
                 }
-
-                cost = cost * factor + kinetic_energy;
+                double start_constrain = abs(x[0] - boundary.ix[0]) + abs(x[1] - boundary.iz[0]);
+                cost = cost * factor + (1E6 * start_constrain);
 
                 printf("cost = %lf\n", cost);
                 return cost;
@@ -385,7 +387,7 @@ namespace fpgm_collocation
                 param.I = node["moments_of_inertia"].as<double>();
                 param.Q = Q;
                 param.R = R;
-                param.h = total / (size/8);
+                param.h = total / (size);
 
                 boundary.v_c = node["velocity_constrain"].as<double>();
                 boundary.t_c = node["theta_contrain"].as<double>();
@@ -495,21 +497,27 @@ namespace fpgm_collocation
                 // printf("number of iterations: %d \n", opt.get_numevals());
                 
                 /** @brief C version **/
-                double tol_eq[dimension + 2] = {tolerance};
-                double tol_ineq[dimension] = {tolerance};
+                // inequality_dimension =
+                // dimension * 2[from upper and lower bound] 
+                int inequality_dimension = 4 + N * 26;
+                double tol_ineq[inequality_dimension] = {tolerance};
                 
                 nlopt_opt opt = nlopt_create(NLOPT_LN_COBYLA, guess.size());
                 nlopt_set_min_objective(opt, control_effort_objective, &param);
 
                 nlopt_set_ftol_abs(opt, 1E-6);
-                nlopt_set_xtol_rel(opt, tolerance);
+                nlopt_set_xtol_rel(opt, 1E-4);
                 nlopt_set_maxeval(opt, 1E3);
-                nlopt_set_maxtime(opt, 1.0); 
+                nlopt_set_maxtime(opt, 0.5); 
 
-                nlopt_add_equality_mconstraint(
-                    opt, dimension, collocation_eq_constraints, &cp, tol_eq);
+                // NLOPT documentation mentions that equality constrains are not supported by COBYLA
+                // nlopt_add_equality_mconstraint(
+                //     opt, dimension, collocation_eq_constraints, &cp, tol_eq);
+                
+                // Using inequality constrains to encompass the equality constrains
+                // - Add upper bound and lower bound to equality constrains = inequality constrains
                 nlopt_add_inequality_mconstraint(
-                    opt, dimension, inequality_constraints, &boundary, tol_ineq);
+                    opt, inequality_dimension, collocation_eq_constraints, &cp, tol_ineq);
                 
                 double x[guess.size()];
                 std::copy(guess.begin(), guess.end(), x);

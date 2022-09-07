@@ -305,14 +305,22 @@ int main(int argc, char **argv)
         initial_z.push_back(waypoints[i](2));
     }
     Eigen::Matrix< double, 7, 1> v;
-    v << 0.05, 0.20, 20.0, 20.0, 0.05, 0.05, 200.0;
+    v << 
+        node["weight_on_x"].as<double>(), 
+        node["weight_on_z"].as<double>(), 
+        node["weight_on_theta"].as<double>(), 
+        node["weight_on_phi"].as<double>(), 
+        node["weight_on_vx"].as<double>(), 
+        node["weight_on_vz"].as<double>(), 
+        node["weight_on_thetadot"].as<double>();
     Eigen::Matrix< double, 7, 7> Q = v.array().matrix().asDiagonal();
     // cout << Q << endl;
-    double R = 400;
+    double R = node["weight_on_phidot"].as<double>();
+
 
     if (!fpgm.load_parameters(
         params_directory, total_time, 
-        (int)initial_guess.size(), Q, R,
+        waypoint_size, Q, R,
         initial_x, initial_z))
         return -1;
 

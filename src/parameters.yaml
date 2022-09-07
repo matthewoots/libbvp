@@ -1,14 +1,14 @@
-airspeed: 20.0
+airspeed: 22.0
 descend_bearing_deg: 90.0
-descend_pitch_deg: 30.0
-buffer_distance: 20.0
+descend_pitch_deg: 40.0
+buffer_distance: 20.00
 
 height_of_descend: 10.0
 height_of_land: 0.5
 
 current_elevator_rad: 0.0
 current_thetadot: 0.0
-command_time: 0.1
+command_time: 0.08
 
 length_cg_to_cwing: 0.055
 length_pivote_to_celevator: 0.0135
@@ -18,11 +18,20 @@ surface_area_wing: 0.11398
 mass: 0.2565
 moments_of_inertia: 0.012311
 
-velocity_constrain: 18.0
+velocity_constrain: 20.0
 theta_contrain: 1.5707
 phi_contrain: 0.3926
 thetadot_constrain: 2.000
 phidot_constrain: 2.000
+
+weight_on_x: 0.02
+weight_on_z: 0.02
+weight_on_theta: 500.0
+weight_on_phi: 1000.0
+weight_on_vx: 0.05
+weight_on_vz: 0.05
+weight_on_thetadot: 500.0
+weight_on_phidot: 500.0
 
 # phi_contrain: pi/8
 # Delta wing example for ZoHD dart 250g 
